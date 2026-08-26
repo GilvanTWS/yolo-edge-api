@@ -2,19 +2,19 @@ import base64
 import io
 import os
 import time
+import json
+import uuid
 import numpy as np
 from PIL import Image
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import List
 from ultralytics import YOLO
 
-# 1. Configuração da API e Modelo
 app = FastAPI(title="YOLO Edge API")
 MODEL_NAME = os.environ.get("MODEL_NAME", "yolov8n.pt")
 model = YOLO(MODEL_NAME)
 
-# 2. Schemas de Validação (Pydantic)
 class PredictRequest(BaseModel):
     image_base64: str
     confidence: float = 0.25
@@ -39,7 +39,15 @@ class BatchPredictResponse(BaseModel):
     results: List[PredictResponse]
     total_inference_ms: float
 
-# 3. Função de Decodificação Exigida pelos Testes
+def log_event(event: str, level: str = "INFO", **kwargs):
+    record = {
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "level": level,
+        "event": event,
+        **kwargs,
+    }
+    print(json.dumps(record, ensure_ascii=False), flush=True)
+
 def _decode_image(b64_str: str) -> np.ndarray:
     try:
         image_data = base64.b64decode(b64_str)
@@ -48,7 +56,6 @@ def _decode_image(b64_str: str) -> np.ndarray:
     except Exception as e:
         raise ValueError("String base64 inválida") from e
 
-# 4. Endpoints
 @app.get("/health")
 def health_check():
     return {
@@ -64,32 +71,54 @@ def metrics():
 @app.post("/predict", response_model=PredictResponse)
 def predict(req: PredictRequest):
     start_time = time.time()
-    
+    request_id = str(uuid.uuid4())[:8]
+
+    log_event("predict_start",
+              request_id=request_id,
+              model=MODEL_NAME,
+              confidence=req.confidence)
+
     try:
+        if not req.image_base64:
+            raise ValueError("missing_input")
         img_array = _decode_image(req.image_base64)
-    except ValueError:
+    except ValueError as e:
+        log_event("predict_error", level="WARN", request_id=request_id, reason=str(e))
         raise HTTPException(status_code=400, detail="Erro ao decodificar a imagem")
 
-    h, w, _ = img_array.shape
-    results = model(img_array, conf=req.confidence, verbose=False)
-    
-    detections = []
-    for r in results:
-        for box in r.boxes:
-            x1, y1, x2, y2 = map(float, box.xyxy[0].tolist())
-            detections.append(Detection(
-                label=model.names[int(box.cls)],
-                confidence=float(box.conf),
-                bbox=[x1, y1, x2, y2]
-            ))
-            
-    return PredictResponse(
-        detections=detections,
-        inference_ms=(time.time() - start_time) * 1000.0,
-        model_used=MODEL_NAME,
-        image_width=w,
-        image_height=h
-    )
+    try:
+        h, w, _ = img_array.shape
+        results = model(img_array, conf=req.confidence, verbose=False)
+
+        detections = []
+        for r in results:
+            for box in r.boxes:
+                x1, y1, x2, y2 = map(float, box.xyxy[0].tolist())
+                detections.append(Detection(
+                    label=model.names[int(box.cls)],
+                    confidence=float(box.conf),
+                    bbox=[x1, y1, x2, y2]
+                ))
+
+        inference_ms = (time.time() - start_time) * 1000.0
+
+        log_event("predict_complete",
+                  request_id=request_id,
+                  model=MODEL_NAME,
+                  detections=len(detections),
+                  inference_ms=inference_ms,
+                  image_size=f"{w}x{h}")
+
+        return PredictResponse(
+            detections=detections,
+            inference_ms=inference_ms,
+            model_used=MODEL_NAME,
+            image_width=w,
+            image_height=h
+        )
+    except Exception as e:
+        log_event("predict_error", level="ERROR", request_id=request_id, reason=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/predict/batch", response_model=BatchPredictResponse)
 def predict_batch(req: BatchPredictRequest):
