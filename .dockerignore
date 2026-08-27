@@ -1,0 +1,16 @@
+.git
+.gitignore
+.dvc
+.dvcignore
+.github
+.pytest_cache
+__pycache__
+*.pyc
+tests
+client
+output
+Dockerfile.client
+docker-compose.yml
+LICENSE
+README.md
+ruff.toml
