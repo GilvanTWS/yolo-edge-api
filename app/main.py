@@ -1,45 +1,36 @@
 import base64
 import io
+import json
 import os
 import time
-import json
 import uuid
+
 import numpy as np
-from PIL import Image
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from typing import List
-from ultralytics import YOLO
+from PIL import Image
+
+from app.model import get_model
+from app.schemas import (
+    BatchPredictRequest,
+    BatchPredictResponse,
+    Detection,
+    PredictRequest,
+    PredictResponse,
+)
 
 app = FastAPI(title="YOLO Edge API")
 MODEL_NAME = os.environ.get("MODEL_NAME", "yolov8n.pt")
-model = YOLO(MODEL_NAME)
 
-class PredictRequest(BaseModel):
-    image_base64: str
-    confidence: float = 0.25
+try:
+    model = get_model(MODEL_NAME)
+    _MODEL_LOADED = True
+except Exception:
+    model = None
+    _MODEL_LOADED = False
 
-class BatchPredictRequest(BaseModel):
-    images_base64: List[str]
-    confidence: float = 0.25
-
-class Detection(BaseModel):
-    label: str
-    confidence: float
-    bbox: List[float]
-
-class PredictResponse(BaseModel):
-    detections: List[Detection]
-    inference_ms: float
-    model_used: str
-    image_width: int
-    image_height: int
-
-class BatchPredictResponse(BaseModel):
-    results: List[PredictResponse]
-    total_inference_ms: float
 
 def log_event(event: str, level: str = "INFO", **kwargs):
+    """Emite um evento estruturado em JSON para stdout."""
     record = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "level": level,
@@ -47,6 +38,7 @@ def log_event(event: str, level: str = "INFO", **kwargs):
         **kwargs,
     }
     print(json.dumps(record, ensure_ascii=False), flush=True)
+
 
 def _decode_image(b64_str: str) -> np.ndarray:
     try:
@@ -56,17 +48,20 @@ def _decode_image(b64_str: str) -> np.ndarray:
     except Exception as e:
         raise ValueError("String base64 inválida") from e
 
+
 @app.get("/health")
 def health_check():
     return {
         "status": "ok",
-        "model_loaded": model is not None,
-        "model_name": MODEL_NAME
+        "model_loaded": _MODEL_LOADED,
+        "model_name": MODEL_NAME,
     }
+
 
 @app.get("/metrics")
 def metrics():
     return {"metrics": "Endpoint de métricas ativado."}
+
 
 @app.post("/predict", response_model=PredictResponse)
 def predict(req: PredictRequest):
@@ -119,6 +114,7 @@ def predict(req: PredictRequest):
     except Exception as e:
         log_event("predict_error", level="ERROR", request_id=request_id, reason=str(e))
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/predict/batch", response_model=BatchPredictResponse)
 def predict_batch(req: BatchPredictRequest):

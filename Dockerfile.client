@@ -1,0 +1,12 @@
+FROM python:3.11-slim
+
+LABEL maintainer="disciplina-visao-computacional"
+LABEL description="Cliente de teste da YOLO Inference API"
+
+WORKDIR /app
+COPY client/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY client/ ./client/
+
+ENTRYPOINT ["python", "-m", "client.client"]

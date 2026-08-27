@@ -1,13 +1,15 @@
 services:
-  yolo-inference:
+  yolo-api:
+    image: ghcr.io/seu_usuario/yolo-edge-api/yolo-api:latest
     build:
       context: .
-      dockerfile: Dockerfile
-    container_name: yolo-inference
+      dockerfile: Dockerfile.api
+    container_name: yolo-api
     environment:
       - MODEL_NAME=yolov8n.pt
     volumes:
+      - ./models:/app/models:ro
       - ./output:/app/output
-      - ./test_image.jpg:/app/test_image.jpg:ro
-    command: ["--mode", "detect", "--input", "/app/test_image.jpg"]
+    ports:
+      - "8000:8000"
     restart: unless-stopped

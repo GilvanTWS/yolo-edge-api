@@ -1,15 +1,9 @@
-# ────────────────────────────────────────────────────────
-# Imagem base: python:3.11-slim
-# Equilíbrio perfeito entre tamanho (~130 MB) e compatibilidade ARM64
-# ────────────────────────────────────────────────────────
 FROM python:3.11-slim
 
-# Metadados da imagem
 LABEL maintainer="disciplina-visao-computacional"
 LABEL description="Inferencia YOLO em ARM64 via Docker"
 
 # ── CAMADA 1: Dependências de sistema (cache estável) ──────────
-# Instaladas antes das dependências Python para maximizar o cache
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
@@ -21,22 +15,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# ── CAMADA 2: Dependências Python (cache baseado em requirements) ──
+# ── CAMADA 2: PyTorch CPU-only (evita o stack CUDA no Edge) ────
+# Instalado antes das demais dependências para não inflar a imagem
+# com o stack completo de CUDA, desnecessário numa Raspberry Pi.
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY app/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir -r requirements.txt
 
 # ── CAMADA 3: Código e pesos do modelo ──────────────────────────
-# Mapeia onde o script e o cérebro da nossa IA vão residir
-COPY app.py .
-COPY yolov8n.pt .
+COPY app/ ./app/
+COPY models/ ./models/
 
-# Diretório de saída para onde enviaremos as imagens processadas
-RUN mkdir -p /app/output
-
-# Variável de ambiente padrão para o modelo
 ENV MODEL_NAME=yolov8n.pt
 
-# Ponto de entrada padrão para execução automática
-ENTRYPOINT ["python", "app.py"]
-CMD ["--mode", "detect", "--input", "/app/test_image.jpg"]
+# Expõe a porta da API FastAPI/Uvicorn
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

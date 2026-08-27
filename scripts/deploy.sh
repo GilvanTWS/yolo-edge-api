@@ -1,60 +1,54 @@
 #!/bin/bash
 # scripts/deploy.sh
-# Script de deploy contínuo in-place com monitoramento de saúde e rollback.
-set -e
-
-APP_DIR="/home/gilvantws/yolo-edge-api"
-cd "$APP_DIR"
-
-echo "=== INICIANDO IMPLANTAÇÃO NO EDGE ==="
-
-# 1. Armazena o estado atual do commit Git para rollback em caso de falha de saúde
-PREVIOUS_COMMIT=$(git rev-parse HEAD)
-echo "Versão atual de segurança (Rollback Point): $PREVIOUS_COMMIT"
-
-# 2. Puxa as novas atualizações de código e ponteiros do DVC
-echo "Sincronizando repositório com o GitHub..."
-git pull origin main
-
-# 3. Puxa o modelo real correspondente do DVC storage
-echo "Puxando modelo do DVC..."
-dvc pull
-
-# 4. Reconstrói e sobe os containers atualizados
-echo "Subindo os containers Docker..."
-docker compose up -d --build api
-
-# 5. Cão de Guarda (Watchdog) de Saúde por 60 segundos (12 tentativas a cada 5 segundos)
-echo "Iniciando Watchdog de Saúde..."
+# Executa no Raspberry Pi via SSH pelo pipeline de CI/CD.
+# Faz pull da nova imagem, reinicia o serviço e valida o health check.
+# Em caso de falha, reverte para a imagem anterior automaticamente.
+set -euo pipefail
+DEPLOY_PATH="${DEPLOY_PATH:-~/yolo-edge-api}"
 HEALTH_URL="http://localhost:8000/health"
-DEPLOY_SUCCESS=false
-
-for i in {1..12}; do
-    echo "Tentativa $i/12 de checar saúde da API..."
-    if curl -s -f "$HEALTH_URL" > /dev/null; then
-        echo "✅ Sucesso! O novo container respondeu perfeitamente ao Health Check."
-        DEPLOY_SUCCESS=true
+HEALTH_RETRIES=6
+HEALTH_WAIT=10
+echo "========================================"
+echo " Deploy — $(date '+%Y-%m-%d %H:%M:%S')"
+echo "========================================"
+cd "$DEPLOY_PATH"
+# ── Salva a imagem atual para possível rollback ──────────────
+PREVIOUS=$(docker inspect yolo-api \
+    --format '{{.Config.Image}}' 2>/dev/null || echo "none")
+echo "[INFO] Imagem atual: $PREVIOUS"
+# ── Baixa a nova imagem ──────────────────────────────────────
+echo "[1/4] Baixando nova imagem..."
+docker compose pull
+# ── Sobe a nova versão ───────────────────────────────────────
+echo "[2/4] Iniciando nova versão..."
+docker compose up -d
+# ── Aguarda o serviço estabilizar ────────────────────────────
+echo "[3/4] Aguardando health check ($((HEALTH_RETRIES * HEALTH_WAIT))s max)..."
+SUCCESS=false
+for i in $(seq 1 $HEALTH_RETRIES); do
+    sleep $HEALTH_WAIT
+    if curl -sf "$HEALTH_URL" > /dev/null 2>&1; then
+        SUCCESS=true
         break
     fi
-    echo "Serviço indisponível. Aguardando 5 segundos..."
-    sleep 5
+    echo "  Tentativa $i/$HEALTH_RETRIES falhou, aguardando..."
 done
-
-# 6. Se o teste de saúde falhar, faz o rollback automático para o commit anterior estável
-if [ "$DEPLOY_SUCCESS" = false ]; then
-    echo "❌ CRÍTICO: O novo container falhou no teste de saúde! Iniciando rollback automático..."
-    
-    # Reverte o Git para o commit anterior
-    git checkout "$PREVIOUS_COMMIT"
-    
-    # Restaura o modelo do DVC para o correspondente daquele commit anterior
-    dvc checkout
-    
-    # Sobe o container novamente com a versão restaurada estável
-    docker compose up -d --build api
-    
-    echo "🔄 Rollback executado com sucesso! Sistema restaurado para a versão anterior estável."
+# ── Avalia o resultado ───────────────────────────────────────
+if [ "$SUCCESS" = true ]; then
+    echo "[4/4] Health check OK"
+    NEW=$(docker inspect yolo-api --format '{{.Config.Image}}' 2>/dev/null)
+    echo ""
+    echo "[OK] Deploy bem-sucedido: $NEW"
+    exit 0
+else
+    echo "[ERRO] Health check falhou após $((HEALTH_RETRIES * HEALTH_WAIT))s"
+    if [ "$PREVIOUS" != "none" ]; then
+        echo "[ROLLBACK] Revertendo para: $PREVIOUS"
+        docker compose down
+        IMAGE=$PREVIOUS docker compose up -d
+        echo "[ROLLBACK] Concluído. Serviço restaurado."
+    else
+        echo "[AVISO] Sem imagem anterior para rollback."
+    fi
     exit 1
 fi
-
-echo "=== DEPLOY CONCLUÍDO COM SUCESSO ABSOLUTO! 🚀 ==="
