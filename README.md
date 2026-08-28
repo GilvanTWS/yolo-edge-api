@@ -1,98 +1,98 @@
 # YOLO Edge API
 
-API de inferência de detecção de objetos com YOLO (Ultralytics), otimizada para rodar em dispositivos de borda (edge) como Raspberry Pi (arquitetura ARM64).
+Object detection inference API using YOLO (Ultralytics), optimized to run on edge devices like the Raspberry Pi (ARM64 architecture).
 
-> **Status: em desenvolvimento** — o projeto ainda não está finalizado. Endpoints, rotas e comportamentos podem mudar enquanto a disciplina evolui.
+> **Status: work in progress** — the project is not finished yet. Endpoints, routes, and behaviors may change as the course evolves.
 
-## Sobre o projeto
+## About
 
-Serve um modelo YOLO pré-treinado (`yolov8n.pt` por padrão) via HTTP, recebendo imagens em base64 e devolvendo as detecções (rótulos, confiança e caixas delimitadoras).
+Serves a pretrained YOLO model (`yolov8n.pt` by default) over HTTP, receiving images in base64 and returning detections (labels, confidence, and bounding boxes).
 
-- Stack de inferência: Ultralytics YOLO + PyTorch (CPU-only, sem CUDA)
+- Inference stack: Ultralytics YOLO + PyTorch (CPU-only, no CUDA)
 - API: FastAPI + Uvicorn
-- Alvo: edge / ARM64 (Raspberry Pi), com build Docker multi-arquitetura
+- Target: edge / ARM64 (Raspberry Pi), with multi-architecture Docker builds
 
-## Funcionalidades
+## Features
 
-- Inferência de imagem única (`/predict`)
-- Inferência em lote (`/predict/batch`)
-- Endpoint de saúde (`/health`) e de métricas (`/metrics`)
-- Logs de eventos estruturados em JSON
-- Cache de modelos em memória
-- Piplina de CI/CD com lint, testes, build ARM64 e quality gate de mAP
-- Deploy e rollback automatizado no edge via `scripts/deploy.sh`
+- Single image inference (`/predict`)
+- Batch inference (`/predict/batch`)
+- Health endpoint (`/health`) and metrics endpoint (`/metrics`)
+- Structured JSON event logs
+- In-memory model caching
+- CI/CD pipeline with lint, tests, ARM64 build, and mAP quality gate
+- Automated edge deploy and rollback via `scripts/deploy.sh`
 
-## Estrutura do projeto
+## Project structure
 
 ```
 .
-├── app/                # API FastAPI (main.py, model.py, schemas.py)
-├── client/             # Cliente de linha de comando p/ testar a API
-├── scripts/            # validate_model.py (quality gate) e deploy.sh
-├── tests/              # Smoke, unit e integration tests
-├── models/             # Pesos dos modelos (gerenciados por DVC)
-├── Dockerfile.api      # Imagem da API em ARM64
-├── Dockerfile.client   # Imagem do cliente
-├── docker-compose.yml  # Orquestração local
-└── .github/workflows/  # Pipeline de CI/CD
+├── app/                # FastAPI app (main.py, model.py, schemas.py)
+├── client/             # Command-line client to exercise the API
+├── scripts/            # validate_model.py (quality gate) and deploy.sh
+├── tests/              # Smoke, unit, and integration tests
+├── models/             # Model weights (managed by DVC)
+├── Dockerfile.api      # ARM64 API image
+├── Dockerfile.client   # Client image
+├── docker-compose.yml  # Local orchestration
+└── .github/workflows/  # CI/CD pipeline
 ```
 
-## Requisitos
+## Requirements
 
 - Python 3.11+
-- Docker + Docker Compose (para execução via container)
-- Um arquivo de pesos YOLO em `models/` (ex.: `yolov8n.pt`)
+- Docker + Docker Compose (to run in a container)
+- A YOLO weights file in `models/` (e.g. `yolov8n.pt`)
 
-## Como executar local (sem Docker)
+## Running locally (without Docker)
 
 ```bash
-# instala as dependências
+# install dependencies
 pip install -r app/requirements.txt
 
-# garante que o modelo existe
+# make sure the model exists
 mkdir -p models
 wget -q -O models/yolov8n.pt \
   https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8n.pt
 
-# sobe a API
+# start the API
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-## Como executar com Docker
+## Running with Docker
 
 ```bash
 docker-compose up --build
 ```
 
-A API ficará disponível em `http://localhost:8000`. Documentação interativa (Swagger) em `http://localhost:8000/docs`.
+The API will be available at `http://localhost:8000`. Interactive docs (Swagger) at `http://localhost:8000/docs`.
 
 ## Endpoints
 
-| Método | Rota             | Descrição                                   |
-|--------|------------------|---------------------------------------------|
-| GET    | `/health`        | Status da API e se o modelo foi carregado   |
-| GET    | `/metrics`       | Endpoint de métricas                        |
-| POST   | `/predict`       | Inferência em uma única imagem (base64)     |
-| POST   | `/predict/batch` | Inferência em várias imagens (lote)         |
+| Method | Route            | Description                              |
+|--------|------------------|------------------------------------------|
+| GET    | `/health`        | API status and whether the model loaded  |
+| GET    | `/metrics`       | Metrics endpoint                         |
+| POST   | `/predict`       | Inference on a single image (base64)     |
+| POST   | `/predict/batch` | Inference on multiple images (batch)     |
 
-### Exemplo de uso com o cliente
+### Usage example with the client
 
 ```bash
 pip install requests
-python -m client.client --url http://localhost:8000 --image caminho/imagem.jpg --confidence 0.3
+python -m client.client --url http://localhost:8000 --image path/to/image.jpg --confidence 0.3
 ```
 
-### Exemplo de requisição `/predict`
+### `/predict` request example
 
 ```bash
 curl -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
-  -d '{"image_base64": "<base64 da imagem>", "confidence": 0.3}'
+  -d '{"image_base64": "<image base64>", "confidence": 0.3}'
 ```
 
-Resposta (schema): `detections[]`, `inference_ms`, `model_used`, `image_width`, `image_height`.
+Response schema: `detections[]`, `inference_ms`, `model_used`, `image_width`, `image_height`.
 
-## Testes
+## Tests
 
 ```bash
 pip install pytest ruff
@@ -100,13 +100,13 @@ pytest tests/ -v --tb=short
 ruff check app/
 ```
 
-## Roadmap (próximos passos)
+## Roadmap (next steps)
 
-- [ ] Finalizar endpoint de métricas
-- [ ] Documentar integração com o Raspberry Pi real
-- [ ] Adicionar suporte a outros modelos YOLO
-- [ ] Implementar watchdog/rollback refinado
+- [ ] Finalize the metrics endpoint
+- [ ] Document integration with the real Raspberry Pi
+- [ ] Add support for other YOLO models
+- [ ] Implement a more robust watchdog/rollback
 
-## Licença
+## License
 
-MIT — veja o arquivo [LICENSE](LICENSE).
+MIT — see the [LICENSE](LICENSE) file.
