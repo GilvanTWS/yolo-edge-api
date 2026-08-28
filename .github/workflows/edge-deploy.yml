@@ -126,36 +126,43 @@ jobs:
       - name: Executar quality gate (mAP@0.5 >= 0.50)
         run: python scripts/validate_model.py --threshold 0.50
   # ─────────────────────────────────────────────────────────
-  # JOB 4: Deploy (validação do artefato publicado no GHCR)
+  # JOB 4: Deploy (validação em staging)
   # O deploy físico no Raspberry Pi é feito manualmente (o runner da
-  # nuvem não alcança o Pi pelo IP local). Este job comprova que a
-  # imagem ARM64 publicada pelo job Build está pronta para o deploy
-  # no edge, mantendo os 4 jobs do pipeline verde.
+  # nuvem não alcança o Pi pelo IP local). Este job simula o deploy
+  # em um container de staging: sobe a API e valida o health check,
+  # espelhando o watchdog com rollback do scripts/deploy.sh.
   # ─────────────────────────────────────────────────────────
   deploy:
-    name: "Deploy → Pronto para o Edge"
+    name: "Deploy → Validação no Edge (staging)"
     needs: model-gate
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: read
-    env:
-      IMAGE: ghcr.io/${{ github.repository }}/yolo-api:sha-${{ github.sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Login no GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Verifica imagem publicada (pronta para o deploy)
+      - name: Baixar modelo para a imagem
         run: |
-          echo "Imagem: $IMAGE"
-          docker manifest inspect "$IMAGE"
-          echo "[OK] Imagem ARM64 publicada e pronta para o deploy no edge."
+          mkdir -p models
+          wget -q -O models/yolov8n.pt "$YOLO_MODEL_URL"
+          ls -lh models/yolov8n.pt
+      - name: Build da imagem da API (staging)
+        run: |
+          docker build -t yolo-api:stage -f Dockerfile.api .
+      - name: Sobe o container em staging e valida o health check
+        run: |
+          docker run -d --name yolo-api-stage -p 8000:8000 -e MODEL_NAME=yolov8n.pt yolo-api:stage
+          for i in $(seq 1 12); do
+            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              echo "[OK] Health check passou — deploy em staging validado."
+              curl -s http://localhost:8000/health
+              exit 0
+            fi
+            echo "Tentativa $i/12 — aguardando API..."
+            sleep 5
+          done
+          echo "[ERRO] Health check falhou após 60s."
+          docker logs yolo-api-stage
+          exit 1
       - name: Notificar resultado
         if: always()
         run: |
