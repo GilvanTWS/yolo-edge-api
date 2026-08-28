@@ -126,52 +126,9 @@ jobs:
       - name: Executar quality gate (mAP@0.5 >= 0.50)
         run: python scripts/validate_model.py --threshold 0.50
   # ─────────────────────────────────────────────────────────
-  # JOB 4: Deploy no Raspberry Pi 5 via SSH (opcional)
-  # Executa apenas em push para main.
-  # Como o runner rode na nuvem, o deploy só acontece se o secret
-  # RPI_SSH_KEY existir e RPI_HOST for alcançável (ex.: via Tailscale).
-  # Caso contrário, os steps de SSH são pulados e o job passa sem erro.
+  # NOTA: o job Deploy via SSH foi removido porque o runner do GitHub
+  # (nuvem) não alcança o Raspberry Pi pelo IP local. O deploy é feito
+  # manualmente no Pi: git pull && docker compose up -d --build.
+  # Os scripts/ e secrets RPI_* continuam prontos para o dia em que o
+  # deploy automatizado for habilitado (ex.: via Tailscale/port-forward).
   # ─────────────────────────────────────────────────────────
-  deploy:
-    name: "Deploy → Raspberry Pi 5"
-    needs: model-gate
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment: production
-    env:
-      RPI_HOST_: ${{ secrets.RPI_HOST }}
-      RPI_USER_: ${{ secrets.RPI_USER }}
-      RPI_SSH_KEY_: ${{ secrets.RPI_SSH_KEY }}
-      RPI_DEPLOY_PATH_: ${{ secrets.RPI_DEPLOY_PATH }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Verifica secrets SSH
-        id: checkssh
-        run: |
-          if [ -n "$RPI_SSH_KEY_" ] && [ -n "$RPI_HOST_" ]; then
-            echo "SSH secrets presentes — deploy será executado."
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "SSH secrets ausentes — deploy não executado (skip)."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Deploy via SSH com rollback automático
-        if: steps.checkssh.outputs.skip != 'true'
-        uses: appleboy/ssh-action@v1
-        with:
-          host:     ${{ env.RPI_HOST_ }}
-          username: ${{ env.RPI_USER_ }}
-          key:      ${{ env.RPI_SSH_KEY_ }}
-          command_timeout: 30m
-          script: |
-            export DEPLOY_PATH=$RPI_DEPLOY_PATH_
-            cd "$DEPLOY_PATH"
-            git pull origin main
-            bash scripts/deploy.sh
-      - name: Notificar resultado
-        if: always()
-        run: |
-          echo "Deploy status: ${{ job.status }}"
-          echo "Commit: ${{ github.sha }}"
-          echo "Triggered by: ${{ github.actor }}"
