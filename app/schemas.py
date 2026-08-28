@@ -1,6 +1,3 @@
-"""app/schemas.py
-Modelos Pydantic (contratos de I/O) da YOLO Inference API.
-"""
 from pydantic import BaseModel
 
 

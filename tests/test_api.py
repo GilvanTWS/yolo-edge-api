@@ -1,8 +1,3 @@
-"""
-tests/test_api.py
-Cobertura: smoke test, unit tests e integration test da YOLO Inference API.
-Pré-requisito: models/yolov8n.pt presente no sistema de arquivos.
-"""
 import base64
 import io
 import json
@@ -14,7 +9,6 @@ from fastapi.testclient import TestClient
 from PIL import Image
 import sys
 
-# Ajusta o PYTHONPATH para localizar a pasta app
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent / "app"))
 
@@ -24,30 +18,23 @@ from app.main import app, _decode_image
 client = TestClient(app)
 ASSETS = Path(__file__).parent / "assets"
 
-# ────────────────────────────────────────────────────────────
-# SMOKE TEST — o serviço responde?
-# ────────────────────────────────────────────────────────────
+
 class TestSmoke:
     def test_health_status_200(self):
-        """API deve retornar HTTP 200 com status ok."""
         resp = client.get("/health")
         assert resp.status_code == 200
 
     def test_health_payload_structure(self):
-        """Payload deve conter status, model_loaded e model_name."""
         data = client.get("/health").json()
         assert "status" in data
         assert "model_loaded" in data
         assert "model_name" in data
 
     def test_metrics_endpoint_accessible(self):
-        """Endpoint /metrics deve estar acessível."""
         resp = client.get("/metrics")
         assert resp.status_code == 200
 
-# ────────────────────────────────────────────────────────────
-# UNIT TESTS — funções isoladas
-# ────────────────────────────────────────────────────────────
+
 class TestDecodeImage:
     def _make_b64_image(self, width=32, height=32, fmt="JPEG"):
         img = Image.new("RGB", (width, height), color=(128, 64, 192))
@@ -71,9 +58,7 @@ class TestDecodeImage:
         with pytest.raises(Exception):
             _decode_image("dado_invalido_nao_e_base64")
 
-# ────────────────────────────────────────────────────────────
-# INTEGRATION TESTS — fluxo completo de inferência
-# ────────────────────────────────────────────────────────────
+
 class TestPredictEndpoint:
     @pytest.fixture
     def zid_b64(self):
@@ -88,7 +73,6 @@ class TestPredictEndpoint:
         assert resp.status_code == 200
 
     def test_predict_detects_at_least_one_object(self, zid_b64):
-        """A imagem zidane.jpg deve produzir ao menos 1 detecção."""
         data = client.post("/predict", json={
             "image_base64": zid_b64,
             "confidence": 0.3,
@@ -96,7 +80,6 @@ class TestPredictEndpoint:
         assert len(data["detections"]) >= 1
 
     def test_predict_response_schema(self, zid_b64):
-        """Resposta deve conter todos os campos do schema."""
         data = client.post("/predict", json={
             "image_base64": zid_b64,
             "confidence": 0.3,
@@ -109,7 +92,6 @@ class TestPredictEndpoint:
         assert data["inference_ms"] > 0
 
     def test_predict_detection_fields(self, zid_b64):
-        """Cada detecção deve ter label, confidence e bbox válidos."""
         data = client.post("/predict", json={
             "image_base64": zid_b64,
             "confidence": 0.3,
@@ -125,9 +107,7 @@ class TestPredictEndpoint:
         })
         assert resp.status_code == 422
 
-# ────────────────────────────────────────────────────────────
-# BATCH ENDPOINT
-# ────────────────────────────────────────────────────────────
+
 class TestBatchEndpoint:
     @pytest.fixture
     def two_images_b64(self):

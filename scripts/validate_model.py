@@ -1,12 +1,6 @@
-"""
-scripts/validate_model.py
-Quality gate: bloqueia o deploy se o mAP@0.5 estiver abaixo do limiar.
-Uso: python scripts/validate_model.py [--threshold 0.50]
-"""
 import argparse
 import sys
 from pathlib import Path
-# Limiar padrão de qualidade
 DEFAULT_THRESHOLD = 0.50
 
 def parse_args():
@@ -25,12 +19,10 @@ def main():
         sys.exit(1)
     from ultralytics import YOLO
     model = YOLO(str(model_path))
-    # Sem dataset explícito, usa o dataset interno do modelo pré-treinado
     if args.dataset:
         print(f"[INFO] Validando com dataset: {args.dataset}")
         metrics = model.val(data=args.dataset, split="val", verbose=False)
     else:
-        # Validação rápida com COCO128 (dataset embutido no ultralytics)
         print("[INFO] Validando com COCO128 (dataset padrão)")
         metrics = model.val(data="coco128.yaml", split="val", verbose=False)
     map50 = float(metrics.box.map50)

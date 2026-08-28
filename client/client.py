@@ -1,9 +1,3 @@
-"""client/client.py
-Cliente de linha de comando para a YOLO Inference API.
-Envia uma imagem em base64 para o endpoint /predict e exibe as detecções.
-Uso:
-    python -m client.client --url http://localhost:8000 --image image.jpg --confidence 0.3
-"""
 import argparse
 import base64
 import sys
