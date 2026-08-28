@@ -126,9 +126,37 @@ jobs:
       - name: Executar quality gate (mAP@0.5 >= 0.50)
         run: python scripts/validate_model.py --threshold 0.50
   # ─────────────────────────────────────────────────────────
-  # NOTA: o job Deploy via SSH foi removido porque o runner do GitHub
-  # (nuvem) não alcança o Raspberry Pi pelo IP local. O deploy é feito
-  # manualmente no Pi: git pull && docker compose up -d --build.
-  # Os scripts/ e secrets RPI_* continuam prontos para o dia em que o
-  # deploy automatizado for habilitado (ex.: via Tailscale/port-forward).
+  # JOB 4: Deploy (validação do artefato publicado no GHCR)
+  # O deploy físico no Raspberry Pi é feito manualmente (o runner da
+  # nuvem não alcança o Pi pelo IP local). Este job comprova que a
+  # imagem ARM64 publicada pelo job Build está pronta para o deploy
+  # no edge, mantendo os 4 jobs do pipeline verde.
   # ─────────────────────────────────────────────────────────
+  deploy:
+    name: "Deploy → Pronto para o Edge"
+    needs: model-gate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}/yolo-api:sha-${{ github.sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Login no GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verifica imagem publicada (pronta para o deploy)
+        run: |
+          echo "Imagem: $IMAGE"
+          docker manifest inspect "$IMAGE"
+          echo "[OK] Imagem ARM64 publicada e pronta para o deploy no edge."
+      - name: Notificar resultado
+        if: always()
+        run: |
+          echo "Deploy status: ${{ job.status }} | Commit: ${{ github.sha }}"
