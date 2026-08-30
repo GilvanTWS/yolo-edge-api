@@ -30,6 +30,8 @@ def parse_args():
     p.add_argument("--height",   type=int, default=480)
     p.add_argument("--manual", action="store_true")
     p.add_argument("--snapshot-url", default="http://localhost:5001/snapshot")
+    p.add_argument("--threshold", type=float, default=80.0,
+                   help="Variância mínima do Laplaciano para considerar nítido")
     return p.parse_args()
 
 
@@ -122,7 +124,7 @@ def main():
                 if now - last_saved < args.interval:
                     continue
 
-            if not is_sharp_enough(frame):
+            if not is_sharp_enough(frame, args.threshold):
                 skipped += 1
                 if args.manual:
                     print("  [AVISO] Frame borrado, descartado — tente de novo.")
