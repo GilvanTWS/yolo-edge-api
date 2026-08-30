@@ -9,4 +9,7 @@ __pycache__/
 
 images/
 
+dataset/raw/
+dataset/annotated/
+
 .env
