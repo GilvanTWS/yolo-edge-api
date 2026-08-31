@@ -13,3 +13,6 @@ dataset/raw/
 dataset/annotated/
 
 .env
+
+preprocessing/outputs/
+runs/
