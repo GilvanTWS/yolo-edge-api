@@ -13,8 +13,9 @@ PREVIOUS=$(docker inspect yolo-api \
 echo "[INFO] Imagem atual: $PREVIOUS"
 echo "[1/4] Baixando nova imagem..."
 docker compose pull
+python3 -m dvc pull models/yolo-epi.pt
 echo "[2/4] Iniciando nova versão..."
-docker compose up -d
+docker compose up -d --build
 echo "[3/4] Aguardando health check ($((HEALTH_RETRIES * HEALTH_WAIT))s max)..."
 SUCCESS=false
 for i in $(seq 1 $HEALTH_RETRIES); do
@@ -36,7 +37,7 @@ else
     if [ "$PREVIOUS" != "none" ]; then
         echo "[ROLLBACK] Revertendo para: $PREVIOUS"
         docker compose down
-        IMAGE=$PREVIOUS docker compose up -d
+        IMAGE=$PREVIOUS docker compose up -d --build
         echo "[ROLLBACK] Concluído. Serviço restaurado."
     else
         echo "[AVISO] Sem imagem anterior para rollback."
