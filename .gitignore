@@ -16,3 +16,7 @@ dataset/annotated/
 
 preprocessing/outputs/
 runs/
+
+# Artefatos de entregas (grandes, não versionados no git)
+dataset_classificacao/
+entregas/
