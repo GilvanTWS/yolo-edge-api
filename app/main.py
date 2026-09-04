@@ -6,9 +6,10 @@ import time
 import uuid
 
 import numpy as np
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from PIL import Image
 
+from app import metrics
 from app.model import get_model
 from app.schemas import (
     BatchPredictRequest,
@@ -27,6 +28,25 @@ try:
 except Exception:
     model = None
     _MODEL_LOADED = False
+
+metrics.MODEL_LOADED.set(1 if _MODEL_LOADED else 0)
+
+
+@app.middleware("http")
+async def instrument_requests(request: Request, call_next):
+    start = time.perf_counter()
+    try:
+        response = await call_next(request)
+        status = response.status_code
+    except Exception:
+        status = 500
+        raise
+    finally:
+        metrics.REQUEST_SECONDS.labels(request.method, request.url.path).observe(
+            time.perf_counter() - start
+        )
+    metrics.REQUESTS_TOTAL.labels(request.method, request.url.path, status).inc()
+    return response
 
 
 def log_event(event: str, level: str = "INFO", **kwargs):
@@ -58,8 +78,9 @@ def health_check():
 
 
 @app.get("/metrics")
-def metrics():
-    return {"metrics": "Endpoint de métricas ativado."}
+def metrics_endpoint():
+    body, content_type = metrics.render_prometheus_metrics()
+    return Response(content=body, media_type=content_type)
 
 
 @app.post("/predict", response_model=PredictResponse)
@@ -95,6 +116,7 @@ def predict(req: PredictRequest):
                 ))
 
         inference_ms = (time.time() - start_time) * 1000.0
+        metrics.INFERENCE_SECONDS.observe(inference_ms / 1000.0)
 
         log_event("predict_complete",
                   request_id=request_id,

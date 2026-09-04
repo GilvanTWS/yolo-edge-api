@@ -6,9 +6,11 @@ import sys
 from pathlib import Path
 
 import cv2
+import prometheus_client
 from flask import Flask, Response
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+from stream import metrics as stream_metrics
 from stream.v3_optimized import OptimizedCamera, RealtimeDetector
 
 
@@ -27,6 +29,11 @@ def _frame_producer():
             continue
 
         annotated = _detector.process(frame)
+
+        stream_metrics.INFERENCE_TIME.set(_detector._last_infer_ms / 1000.0)
+        stream_metrics.STREAM_FPS.set(_detector._last_fps)
+        stream_metrics.DETECTIONS.set(len(_detector._last_boxes))
+        stream_metrics.FRAMES_TOTAL.inc()
 
         ok, jpg = cv2.imencode('.jpg', annotated,
                                [cv2.IMWRITE_JPEG_QUALITY, 80])
@@ -97,6 +104,14 @@ def health():
         "frame_count": _detector._frame_idx if _detector else 0,
     }
     return Response(json.dumps(status), mimetype='application/json')
+
+
+@app.route('/metrics')
+def metrics():
+    return Response(
+        prometheus_client.generate_latest(),
+        mimetype=prometheus_client.CONTENT_TYPE_LATEST,
+    )
 
 
 def parse_args():

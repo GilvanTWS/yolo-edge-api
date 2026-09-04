@@ -20,3 +20,8 @@ runs/
 # Artefatos de entregas (grandes, não versionados no git)
 dataset_classificacao/
 entregas/
+
+# Aula 7 - observabilidade
+yolo_lab/venv/
+yolo_lab/videos/
+yolo_lab/*.pt

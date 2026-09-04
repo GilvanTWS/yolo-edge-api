@@ -16,8 +16,9 @@ Serves a pretrained YOLO model (`yolov8n.pt` by default) over HTTP, receiving im
 
 - Single image inference (`/predict`)
 - Batch inference (`/predict/batch`)
-- Health endpoint (`/health`) and metrics endpoint (`/metrics`)
+- Health endpoint (`/health`) and Prometheus metrics endpoint (`/metrics`)
 - Structured JSON event logs
+- Observability integration: YOLO inference + hardware metrics scraped by Grafana Alloy → Grafana Cloud (Aula 7)
 - In-memory model caching
 - CI/CD pipeline with lint, tests, ARM64 build, and mAP quality gate
 - Automated edge deploy and rollback via `scripts/deploy.sh`
@@ -26,9 +27,11 @@ Serves a pretrained YOLO model (`yolov8n.pt` by default) over HTTP, receiving im
 
 ```
 .
-├── app/                # FastAPI app (main.py, model.py, schemas.py)
+├── app/                # FastAPI app (main.py, model.py, schemas.py, metrics.py)
 ├── client/             # Command-line client to exercise the API
 ├── scripts/            # validate_model.py (quality gate) and deploy.sh
+├── yolo_lab/           # Aula 7: standalone YOLO monitoring script (prometheus-client)
+├── deploy/             # Aula 7: Grafana Alloy config template (observability)
 ├── tests/              # Smoke, unit, and integration tests
 ├── models/             # Model weights (managed by DVC)
 ├── Dockerfile.api      # ARM64 API image
@@ -92,6 +95,60 @@ curl -X POST http://localhost:8000/predict \
 
 Response schema: `detections[]`, `inference_ms`, `model_used`, `image_width`, `image_height`.
 
+## Observability (Edge AI monitoring)
+
+Stack: **Raspberry Pi → Node Exporter + YOLO inference → Grafana Alloy → Prometheus (Grafana Cloud) → Dashboards**
+
+### What is instrumented in this repo
+
+| Target | Endpoint | Metrics |
+|--------|----------|---------|
+| API (FastAPI) | `GET /metrics` (port 8000) | `yolo_api_requests_total`, `yolo_api_request_seconds`, `yolo_api_inference_seconds`, `yolo_model_loaded` + process metrics |
+| Stream server (Flask) | `GET /metrics` (port 5000) | `yolo_inference_time_seconds`, `yolo_stream_fps`, `yolo_stream_detections`, `yolo_stream_frames_total` |
+| YOLO lab script | `GET /metrics` (port 8000) | `yolo_inference_time_seconds` (single gauge) |
+
+### Manual steps (Raspberry Pi + Grafana Cloud)
+
+These require interactive/cloud access and cannot be automated from this repo:
+
+1. **Grafana Cloud** — create an account, a *Stack*, and a Prometheus *Access Policy* token with `metrics:write`. Save the Prometheus *Details* (User/ID) and the *remote write* URL.
+2. **On the Raspberry Pi**, install and start Node Exporter:
+   ```bash
+   sudo apt install prometheus-node-exporter -y
+   curl http://localhost:9100/metrics
+   ```
+3. **Install Grafana Alloy** (official Grafana apt repo, see Aula 7) and copy the ready template:
+   ```bash
+   sudo cp deploy/observability/config.alloy /etc/alloy/config.alloy
+   sudo nano /etc/alloy/config.alloy   # fill in URL, username, token
+   sudo systemctl restart alloy
+   systemctl status alloy
+   ```
+4. **Run the YOLO monitoring lab** (headless-safe, single gauge):
+   ```bash
+   cd yolo_lab
+   python3 -m venv venv && source venv/bin/activate
+   pip install -r requirements.txt
+   mkdir -p videos            # put the course video (cars) at videos/transito.mp4
+   python yolo_monitor.py --imgsz 640
+   curl http://localhost:8000/metrics
+   ```
+   Change `--imgsz` between `640` and `320` to compare inference time, CPU, memory, and temperature.
+
+5. **Dashboards & alerts** (Grafana Cloud UI) — queries from Aula 7:
+   - CPU: `node_load1`
+   - Memory (%): `(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100`
+   - Temperature (°C): `max(node_hwmon_temp_celsius{chip="thermal_thermal_zone0"})`
+   - Inference: `yolo_inference_time_seconds`
+   - Alert: `Uso de memória RAM > 80% → email` (contact point `Administrador`)
+
+### Validation points (Aula 7)
+
+- Node Exporter exposing metrics on `:9100`; Alloy `active (running)`.
+- `up` returns `1` in *Explore*; `yolo_inference_time_seconds` present in Grafana Cloud.
+- Changing `IMG_SIZE` produces visible variation in the inference time panel.
+- Memory alert rule active (evaluates every ~1 min).
+
 ## Tests
 
 ```bash
@@ -102,10 +159,9 @@ ruff check app/
 
 ## Roadmap (next steps)
 
-- [ ] Finalize the metrics endpoint
-- [ ] Document integration with the real Raspberry Pi
+- [x] Finalize the metrics endpoint (Prometheus format via `prometheus-client`)
+- [ ] Complete the Aula 7 hands-on on the Raspberry Pi (dashboards + alerts)
 - [ ] Add support for other YOLO models
-- [ ] Implement a more robust watchdog/rollback
 
 ## License
 

@@ -111,6 +111,7 @@ class RealtimeDetector:
 
         self._fps_window = deque(maxlen=30)
         self._t_last     = time.perf_counter()
+        self._last_fps   = 0.0
 
     def process(self, frame: np.ndarray) -> np.ndarray:
         self._frame_idx += 1
@@ -154,6 +155,7 @@ class RealtimeDetector:
 
         fps_display = (len(self._fps_window) /
                        sum(self._fps_window)) if self._fps_window else 0
+        self._last_fps = fps_display
         is_infer_frame = (self._frame_idx % self.infer_every == 0)
 
         osd_lines = [

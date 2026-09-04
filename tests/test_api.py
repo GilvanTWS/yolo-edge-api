@@ -33,6 +33,19 @@ class TestSmoke:
     def test_metrics_endpoint_accessible(self):
         resp = client.get("/metrics")
         assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/plain")
+
+    def test_metrics_exposes_prometheus_metrics(self):
+        body = client.get("/metrics").text
+        assert "yolo_api_requests_total" in body
+        assert "yolo_api_inference_seconds" in body
+        assert "yolo_model_loaded" in body
+
+    def test_metrics_counts_requests(self):
+        client.get("/health")
+        body = client.get("/metrics").text
+        assert 'yolo_api_requests_total{endpoint="/health"' in body
+        assert "yolo_api_request_seconds_count" in body
 
 
 class TestDecodeImage:
