@@ -135,6 +135,10 @@ These require interactive/cloud access and cannot be automated from this repo:
    ```
    Change `--imgsz` between `640` and `320` to compare inference time, CPU, memory, and temperature.
 
+   > Tip: if the FastAPI service already occupies port `8000` on the Pi, run with
+   > `python yolo_monitor.py --port 8001` and point the Alloy `yolo_metrics` scrape
+   > target to `localhost:8001` instead.
+
 5. **Dashboards & alerts** (Grafana Cloud UI) — queries from Aula 7:
    - CPU: `node_load1`
    - Memory (%): `(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100`

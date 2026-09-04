@@ -1,13 +1,23 @@
 // config.alloy - Grafana Alloy na Raspberry Pi (Aula 7)
 //
-// Instalação: sudo nano /etc/alloy/config.alloy   -> copie o conteúdo abaixo
-// Depois:      sudo systemctl restart alloy && systemctl status alloy
+// Este template usa variáveis de ambiente para as credenciais do
+// Grafana Cloud, para que nenhum segredo fique versionado no git.
+//
+// Instalação (na Pi):
+//   1. sudo cp deploy/observability/config.alloy /etc/alloy/config.alloy
+//   2. Defina as variáveis no arquivo de ambiente do serviço:
+//        sudo nano /etc/systemd/system/alloy.service.d/override.conf
+//      com:
+//        [Service]
+//        Environment="GRAFANA_URL=https://SEU-STACK-prometheus-prod-sa-east-1.grafana.net/api/prom/push"
+//        Environment="GRAFANA_USER=SEU_USERNAME"
+//        Environment="GRAFANA_TOKEN=SEU_TOKEN"
+//   3. sudo systemctl daemon-reload && sudo systemctl restart alloy
 //
 // Credenciais (Etapa 1 da aula):
-//   * username = "SEU_USERNAME_AQUI" -> ID do usuário do stack Prometheus no Grafana Cloud
-//   * password = "SEU_TOKEN_AQUI"    -> token com permissão metrics:write
-//   * url      -> endpoint `Prometheus remote write` exibido nos Details do serviço Prometheus
-//     (ex.: https://prometheus-prod-40-prod-sa-east-1.grafana.net/api/prom/push)
+//   * GRAFANA_USER -> ID do usuário do stack Prometheus no Grafana Cloud
+//   * GRAFANA_TOKEN -> token com permissão metrics:write
+//   * GRAFANA_URL  -> endpoint `Prometheus remote write` (Details do serviço Prometheus)
 
 // Métricas de hardware do Node Exporter (CPU, memória, temperatura) - porta 9100
 prometheus.scrape "node_exporter" {
@@ -23,19 +33,19 @@ prometheus.scrape "yolo_metrics" {
 
 // Métricas do servidor de stream (v3_optimized + mjpeg_server via Docker) - porta 5000
 // Comente este bloco se você não for usar o deploy docker-compose do yolo-stream.
-prometheus.scrape "yolo_stream" {
-  targets = [{ "__address__" = "localhost:5000" }]
-  metrics_path = "/metrics"
-  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
-}
+// prometheus.scrape "yolo_stream" {
+//   targets = [{ "__address__" = "localhost:5000" }]
+//   metrics_path = "/metrics"
+//   forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+// }
 
 // Envia todas as métricas coletadas para o Prometheus gerenciado no Grafana Cloud
 prometheus.remote_write "grafana_cloud" {
   endpoint {
-    url = "SEU_URL_REMOTE_WRITE_AQUI"
+    url = env("GRAFANA_URL")
     basic_auth {
-      username = "SEU_USERNAME_AQUI"
-      password = "SEU_TOKEN_AQUI"
+      username = env("GRAFANA_USER")
+      password = env("GRAFANA_TOKEN")
     }
   }
 }
