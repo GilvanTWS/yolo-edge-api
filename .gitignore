@@ -25,3 +25,6 @@ entregas/
 yolo_lab/venv/
 yolo_lab/videos/
 yolo_lab/*.pt
+
+# Aula 8 - otimização de modelos (Edge AI)
+edge_ai_lab/modelo/
